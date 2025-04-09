@@ -10,4 +10,5 @@ First Steps (Mikrotik)
 
 Running the script
 ===
+install the paramiko dependency: `pip install paramiko`
 Run the script `python mikrotik/reconfig.py` without any arguments to use defaults.
