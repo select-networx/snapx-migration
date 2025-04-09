@@ -69,6 +69,34 @@ onload = () => document.querySelector("form").submit()
 </html>
 """
 
+rlogin_html_template = """
+\$(if http-status == 302)Hotspot login required\$(endif)
+\$(if http-header == "Location")\$(link-redirect)\$(endif)
+<html>
+<?xml version="1.0" encoding="UTF-8"?>
+  <WISPAccessGatewayParam
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:noNamespaceSchemaLocation="http://\$(hostname)/xml/WISPAccessGatewayParam.xsd">
+    <Redirect>
+	<AccessProcedure>1.0</AccessProcedure>
+	<AccessLocation>\$(location-id)</AccessLocation>
+	<LocationName>\$(location-name)</LocationName>
+	<LoginURL>\$(link-login-only)?target=xml</LoginURL>
+	<MessageType>100</MessageType>
+	<ResponseCode>0</ResponseCode>
+    </Redirect>
+  </WISPAccessGatewayParam>
+<head>
+<title>...</title>
+<meta http-equiv="refresh" content="0; url=\$(link-redirect)">
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="expires" content="-1">
+</head>
+<body>
+</body>
+</html>
+"""
+
 # Create SSH client with logging enabled
 paramiko.util.log_to_file('paramiko.log')
 client = paramiko.SSHClient()
@@ -208,6 +236,8 @@ def configure_mikrotik(ip, port, username, password, portal_id, acl):
     configured_alogin_html = alogin_html_template.replace("__PORTALID__", portal_id)
     configured_alogin_html = configured_alogin_html.replace('\n', '').replace('"', '\\"')
 
+    configured_rlogin_html = rlogin_html_template.replace('\n', '').replace('"', '\\"')
+
     # Test connection first
     if not test_connection(ip, port, username, password):
         print(f"Skipping configuration for {ip} due to connection issues.")
@@ -230,41 +260,44 @@ def configure_mikrotik(ip, port, username, password, portal_id, acl):
 
         print(f"Retrieving ACL for {ip}...")
         current_acl_list = get_current_acl()
-        current_acl_list.append(acl) # returns an array
+        if not acl is None:
+            current_acl_list.append(acl) # returns an array
 
+        current_acl_list.append(radius_egress)
         updated_acl_list = ",".join(current_acl_list) # it's now a csv string
         print('Applying ACL: ' + updated_acl_list)
 
-        commands = [
-            # Add custom entries into the walled garden
-            'ip hotspot walled-garden add dst-host=*.amazonaws.com',
-            'ip hotspot walled-garden add dst-host=*.selectnetworx.com',
+        commands = []
 
-            # Create a new HTML directory for `choice`
-            #'file remove [find name="choice"]',
-            'file add name=choice/login.html contents="' + configured_login_html + '"',
-            'file add name=choice/alogin.html contents="' + configured_alogin_html + '"',
+        # Add custom entries into the walled garden
+        commands.append('ip hotspot walled-garden add dst-host=*.amazonaws.com')
+        commands.append('ip hotspot walled-garden add dst-host=*.selectnetworx.com')
 
-            # Create a new hotspot server profile
-            'ip hotspot profile add name=choice html-directory=choice',
+        # Create a new HTML directory for `choice`
+        #'file remove [find name="choice"]',
+        commands.append('file add name=choice/login.html contents="' + configured_login_html + '"')
+        commands.append('file add name=choice/alogin.html contents="' + configured_alogin_html + '"')
+        commands.append('file add name=choice/rlogin.html contents="' + configured_rlogin_html + '"')
 
-            # Modify existing server to use new profile
-            'ip hotspot set [find] profile=choice',
+        # Create a new hotspot server profile
+        commands.append('ip hotspot profile add name=choice html-directory=choice')
 
-            # Add IP address to SSH allowed list
-            # f'ip firewall address-list add list=ssh allowed address={radius_egress}', # not required
-            f'ip service set ssh address={updated_acl_list}',
+        # Modify existing server to use new profile
+        commands.append('ip hotspot set [find] profile=choice')
 
-            # Create a new RADIUS profile
-            f'radius add service=hotspot,login address={radius_ingress} secret={radius_secret} disabled=yes comment=SN_CHOICE',
+        # Add IP address to SSH allowed list
+        # f'ip firewall address-list add list=ssh allowed address={radius_egress}') # not required
+        commands.append(f'ip service set ssh address={updated_acl_list}')
 
-            # Switch the server profile to the `choice` profile
-            'ip hotspot profile set [find name=choice] use-radius=yes',
+        # Create a new RADIUS profile
+        commands.append(f'radius add service=hotspot,login address={radius_ingress} secret={radius_secret} disabled=yes comment=SN_CHOICE')
 
-            # Switch system to use the new RADIUS profile
-            'radius set [find] disabled=yes',  # Disable all existing radius profiles
-            'radius set [find comment=SN_CHOICE] disabled=no'  # Enable the choice radius profile
-        ]
+        # Switch the server profile to the `choice` profile
+        commands.append('ip hotspot profile set [find name=choice] use-radius=yes')
+
+        # Switch system to use the new RADIUS profile
+        commands.append('radius set [find] disabled=yes')  # Disable all existing radius profiles
+        commands.append('radius set [find comment=SN_CHOICE] disabled=no')  # Enable the choice radius profile
 
         # Execute each command
         for command in commands:

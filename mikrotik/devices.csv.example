@@ -1,2 +1,2 @@
-ip,port,username,password,portal_id
-192.168.0.64,22,admin,PaSsWoRd#,5104542
+ip,port,username,password,portal_id,ssh_acl
+192.168.0.64,22,admin,PaSsWoRd#,5104542,192.168.0.64,22
