@@ -70,22 +70,7 @@ onload = () => document.querySelector("form").submit()
 """
 
 rlogin_html_template = """
-\$(if http-status == 302)Hotspot login required\$(endif)
-\$(if http-header == "Location")\$(link-redirect)\$(endif)
 <html>
-<?xml version="1.0" encoding="UTF-8"?>
-  <WISPAccessGatewayParam
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:noNamespaceSchemaLocation="http://\$(hostname)/xml/WISPAccessGatewayParam.xsd">
-    <Redirect>
-	<AccessProcedure>1.0</AccessProcedure>
-	<AccessLocation>\$(location-id)</AccessLocation>
-	<LocationName>\$(location-name)</LocationName>
-	<LoginURL>\$(link-login-only)?target=xml</LoginURL>
-	<MessageType>100</MessageType>
-	<ResponseCode>0</ResponseCode>
-    </Redirect>
-  </WISPAccessGatewayParam>
 <head>
 <title>...</title>
 <meta http-equiv="refresh" content="0; url=\$(link-redirect)">
@@ -97,29 +82,14 @@ rlogin_html_template = """
 </html>
 """
 
-# Create SSH client with logging enabled
-paramiko.util.log_to_file('paramiko.log')
+# Create SSH client
 client = paramiko.SSHClient()
 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
 def get_current_acl():
     # Get current SSH access list
     print("Retrieving current SSH access list...")
-    stdin, stdout, stderr = client.exec_command('ip service print where name=ssh')
-
-    # Wait for command to complete
-    exit_status = stdout.channel.recv_exit_status()
-
-    # Read both stdout and stderr
-    output = stdout.read().decode('utf-8').strip()
-    error = stderr.read().decode('utf-8').strip()
-
-    if exit_status == 0:
-        if output:
-            print(f"Output: {output}")
-    else:
-        print(f"Error: {error}")
-        return
+    output = exec('ip service print where name=ssh')
 
     ### 
     # we've got the output from the acl command
@@ -230,6 +200,7 @@ def test_connection(ip, port, username, password):
 
 def configure_mikrotik(ip, port, username, password, portal_id, acl):
     # Apply the portal_id to the login HTML template
+    # replace line endings in all templates
     configured_login_html = login_html_template.replace("__PORTALID__", portal_id)
     configured_login_html = configured_login_html.replace('\n', '').replace('"', '\\"')
 
@@ -267,69 +238,69 @@ def configure_mikrotik(ip, port, username, password, portal_id, acl):
         updated_acl_list = ",".join(current_acl_list) # it's now a csv string
         print('Applying ACL: ' + updated_acl_list)
 
-        commands = []
 
         # Add custom entries into the walled garden
-        commands.append('ip hotspot walled-garden add dst-host=*.amazonaws.com')
-        commands.append('ip hotspot walled-garden add dst-host=*.selectnetworx.com')
+        exec('ip hotspot walled-garden add dst-host=*.amazonaws.com')
+        exec('ip hotspot walled-garden add dst-host=*.selectnetworx.com')
 
         # Create a new HTML directory for `choice`
         #'file remove [find name="choice"]',
-        commands.append('file add name=choice/login.html contents="' + configured_login_html + '"')
-        commands.append('file add name=choice/alogin.html contents="' + configured_alogin_html + '"')
-        commands.append('file add name=choice/rlogin.html contents="' + configured_rlogin_html + '"')
+        exec('file add name=choice/login.html contents="' + configured_login_html + '"')
+        exec('file add name=choice/alogin.html contents="' + configured_alogin_html + '"')
+        exec('file add name=choice/rlogin.html contents="' + configured_rlogin_html + '"')
 
         # Create a new hotspot server profile
-        commands.append('ip hotspot profile add name=choice html-directory=choice')
+        exec('ip hotspot profile add name=choice html-directory=choice')
 
         # Modify existing server to use new profile
-        commands.append('ip hotspot set [find] profile=choice')
+        exec('ip hotspot set [find] profile=choice')
 
         # Add IP address to SSH allowed list
         # f'ip firewall address-list add list=ssh allowed address={radius_egress}') # not required
-        commands.append(f'ip service set ssh address={updated_acl_list}')
+        exec(f'ip service set ssh address={updated_acl_list}')
 
         # Create a new RADIUS profile
-        commands.append(f'radius add service=hotspot,login address={radius_ingress} secret={radius_secret} disabled=yes comment=SN_CHOICE')
+        exec(f'radius add service=hotspot,login address={radius_ingress} secret={radius_secret} disabled=yes comment=SN_CHOICE')
 
         # Switch the server profile to the `choice` profile
-        commands.append('ip hotspot profile set [find name=choice] use-radius=yes')
+        exec('ip hotspot profile set [find name=choice] use-radius=yes')
 
         # Switch system to use the new RADIUS profile
-        commands.append('radius set [find] disabled=yes')  # Disable all existing radius profiles
-        commands.append('radius set [find comment=SN_CHOICE] disabled=no')  # Enable the choice radius profile
+        exec('radius set [find] disabled=yes')  # Disable all existing radius profiles
+        exec('radius set [find comment=SN_CHOICE] disabled=no')  # Enable the choice radius profile
 
-        # Execute each command
-        for command in commands:
-            print(f"Executing: {command}")
-            stdin, stdout, stderr = client.exec_command(command)
-            
-            # Wait for command to complete
-            exit_status = stdout.channel.recv_exit_status()
-
-            # Read both stdout and stderr
-            output = stdout.read().decode('utf-8').strip()
-            error = stderr.read().decode('utf-8').strip()
-            
-            if exit_status == 0:
-                print(f"Command successful: {command}")
-                if output:
-                    print(f"Output: {output}")
-            else:
-                print(f"Command failed: {command}")
-                print(f"Error: {error}")
-                break
-                
-            # Brief pause between commands
-            time.sleep(0.5)
-            
         # Close the connection
         client.close()
         print(f"Configuration of {ip} completed successfully.")
         
     except Exception as e:
         print(f"Failed to configure {ip}: {str(e)}")
-        print(f"Check the paramiko.log file for more detailed error information.")
+
+def exec(command):
+    output = None
+    try:
+        print(f"Executing: {command}")
+        stdin, stdout, stderr = client.exec_command(command)
+        
+        # Wait for command to complete
+        exit_status = stdout.channel.recv_exit_status()
+
+        # Read both stdout and stderr
+        output = stdout.read().decode('utf-8').strip()
+        error = stderr.read().decode('utf-8').strip()
+        
+        print(f"Executing Command: {command}")
+
+        if exit_status == 0:
+            print(f"✓ Command successful.")
+            if output:
+                print(f"Output: {output}")
+        else:
+            print(f"✗ Command failed!")
+            print(f"Error: {error}")
+    except Exception as e:
+        print(f"Failed to execute {command}:\n{str(e)}")
+    return output
 
 def main():
     csv_file = "./devices.csv"  # Update with your actual file path
