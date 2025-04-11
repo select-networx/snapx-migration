@@ -12,3 +12,17 @@ Running the script
 ===
 install the paramiko dependency: `pip install paramiko`
 Run the script `python mikrotik/reconfig.py` without any arguments to use defaults.
+
+
+Errors
+===
+When running the script, there might be some lines in the output that report as `failed` like so:
+
+```
+Executing: ip hotspot profile add name=sn_choice html-directory=sn_choice
+✗ Command failed!
+```
+
+This would indicate that the profile might already exist, we've tried to use a name that would not 
+be common in the wild.
+
