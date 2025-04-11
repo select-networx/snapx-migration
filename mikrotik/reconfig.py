@@ -89,52 +89,24 @@ client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 def get_current_acl():
     # Get current SSH access list
     print("Retrieving current SSH access list...")
-    output = exec('ip service print where name=ssh')
+    output = exec('ip service print terse where name=ssh')
+    ip_list = extract_ip_addresses(output)
+    unique_ips = list(dict.fromkeys(ip_list))
+    print('SSH addresses found: ' + ",".join(unique_ips))
+    return unique_ips
 
-    ### 
-    # we've got the output from the acl command
-    # now we need to parse it, because it uses a table
-
-    lines = output.strip().splitlines()
-
-    ssh_addresses = []
-
-    # Parse the columns header to find the index of each column
-    column_line = next(line for line in lines if line.startswith("Columns:"))
-    columns = [c.strip() for c in column_line.replace("Columns:", "").split(",")]
-    address_index = columns.index("ADDRESS")
-
-    if not "ADDRESS" in columns:
-        print('no addresses configured in acl')
-        return ssh_addresses
-
-    capture = False
-
-    for line in lines:
-        stripped = line.strip()
-
-        print("\n\n" + stripped)
-
-        if not stripped or stripped.startswith("Columns") or stripped.startswith("#"):
-            continue
-
-        parts = line.split()
-
-        if not capture:
-            if "ssh" in parts:
-                # Start capturing from this line
-                if len(parts) > address_index:
-                    ssh_addresses.append(parts[address_index+1])
-                capture = True
-        else:
-            # Handle continuation lines (they usually have only the address column)
-            if parts and not parts[0].isdigit():  # Indented continuation
-                ssh_addresses.append(parts[0])
-            else:
-                capture = False  # Stop if it's a new service or invalid line
-
-    print('SSH addresses found: ' + ",".join(ssh_addresses))
-    return ssh_addresses
+def extract_ip_addresses(output):
+    # Find the address part in the output
+    if "address=" not in output:
+        return []
+    
+    # Extract the part after "address=" and before the next space
+    address_part = output.split("address=")[1].split(" ")[0]
+    
+    # Split by comma to get individual IP addresses
+    ip_addresses = address_part.split(",")
+    
+    return ip_addresses
 
 def test_connection(ip, port, username, password):
     """Test SSH connection and provide detailed error information"""
@@ -229,41 +201,44 @@ def configure_mikrotik(ip, port, username, password, portal_id, acl):
         )
         print(f"Successfully connected to {ip}")
 
+        updated_acl_list = None
         print(f"Retrieving ACL for {ip}...")
-        current_acl_list = get_current_acl()
-        if not acl is None:
-            current_acl_list.append(acl) # returns an array
-
-        current_acl_list.append(radius_egress)
+        current_acl_list = get_current_acl() # returns an array
+        if acl:
+            current_acl_list.append(acl) # add custom entries
+        current_acl_list.append(radius_egress) # add required snap egress ip
         updated_acl_list = ",".join(current_acl_list) # it's now a csv string
         print('Applying ACL: ' + updated_acl_list)
-
 
         # Add custom entries into the walled garden
         exec('ip hotspot walled-garden add dst-host=*.amazonaws.com')
         exec('ip hotspot walled-garden add dst-host=*.selectnetworx.com')
 
-        # Create a new HTML directory for `choice`
-        #'file remove [find name="choice"]',
-        exec('file add name=choice/login.html contents="' + configured_login_html + '"')
-        exec('file add name=choice/alogin.html contents="' + configured_alogin_html + '"')
-        exec('file add name=choice/rlogin.html contents="' + configured_rlogin_html + '"')
+        exec('/file remove [find where name=sn_choice/login.html]')
+        exec('file add name=sn_choice/login.html contents="' + configured_login_html + '"')
 
-        # Create a new hotspot server profile
-        exec('ip hotspot profile add name=choice html-directory=choice')
+        exec('/file remove [find where name=sn_choice/alogin.html]')
+        exec('file add name=sn_choice/alogin.html contents="' + configured_alogin_html + '"')
+
+        exec('/file remove [find where name=sn_choice/rlogin.html]')
+        exec('file add name=sn_choice/rlogin.html contents="' + configured_rlogin_html + '"')
+
+        # Create a new hotspot server profile, might already exist
+        exec('ip hotspot profile add name=sn_choice html-directory=sn_choice')
 
         # Modify existing server to use new profile
-        exec('ip hotspot set [find] profile=choice')
+        exec('ip hotspot set [find] profile=sn_choice')
 
-        # Add IP address to SSH allowed list
-        # f'ip firewall address-list add list=ssh allowed address={radius_egress}') # not required
-        exec(f'ip service set ssh address={updated_acl_list}')
+        if updated_acl_list:
+            # Add IP address to SSH allowed list
+            # f'ip firewall address-list add list=ssh allowed address={radius_egress}') # not required
+            exec(f'ip service set ssh address={updated_acl_list}')
 
         # Create a new RADIUS profile
         exec(f'radius add service=hotspot,login address={radius_ingress} secret={radius_secret} disabled=yes comment=SN_CHOICE')
 
-        # Switch the server profile to the `choice` profile
-        exec('ip hotspot profile set [find name=choice] use-radius=yes')
+        # Switch the server profile to the `sn_choice` profile
+        exec('ip hotspot profile set [find name=sn_choice] use-radius=yes')
 
         # Switch system to use the new RADIUS profile
         exec('radius set [find] disabled=yes')  # Disable all existing radius profiles
