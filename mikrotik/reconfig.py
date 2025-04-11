@@ -263,8 +263,6 @@ def exec(command):
         # Read both stdout and stderr
         output = stdout.read().decode('utf-8').strip()
         error = stderr.read().decode('utf-8').strip()
-        
-        print(f"Executing Command: {command}")
 
         if exit_status == 0:
             print(f"✓ Command successful.")
