@@ -159,7 +159,7 @@ def configure_mikrotik(ip: str, port: int, username: str, password: str, portal_
         exec("ip hotspot profile set [find name=sn_choice] use-radius=yes")
 
         # Switch system to use the new RADIUS profile
-        radius_to_retain = ''  # Don't delete ALL existing RADIUS profiles
+        radius_to_retain = ''  # Don't disable ALL existing RADIUS profiles
         exec(f"radius set [find comment!=SN_CHOICE address!={radius_to_retain}] disabled=yes")  # Disable other existing radius profiles
 
         # Close the connection
