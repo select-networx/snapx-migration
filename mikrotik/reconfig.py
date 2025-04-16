@@ -140,7 +140,7 @@ def configure_mikrotik(ip, port, username, password, portal_id, acl):
         exec('/tool fetch url="https://content.selectnetworx.com/snapx-migration/rlogin.php?portal=' + portal_id + '" mode=http dst-path=sn_choice/rlogin.html')
 
         # Create a new hotspot server profile, might already exist
-        exec('ip hotspot profile add name=sn_choice html-directory=choice')
+        exec('ip hotspot profile add name=sn_choice html-directory=sn_choice')
 
         # Modify existing server to use new profile
         exec('ip hotspot set [find] profile=sn_choice')
@@ -148,6 +148,7 @@ def configure_mikrotik(ip, port, username, password, portal_id, acl):
         if updated_acl_list:
             print('Applying ACL: ' + updated_acl_list)
             # Add IP address to SSH allowed list
+            # exec(f'ip firewall address-list add list=ssh allowed address={radius_egress}') # not required
             exec(f'ip service set ssh address={updated_acl_list}')
 
         # Create a new RADIUS profile
