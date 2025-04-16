@@ -5,7 +5,7 @@ These scripts assist in migrating existing setups (Mikrotik only at this point) 
 First Steps (Mikrotik)
 ===
 - You need to obtain configuration details, and copy the included [Example Configuration File](./mikrotik/config.ini.example) into `mikrotik/config.ini`, and change the values.
-- You need to get details of the devices that are to be reconfigured, and populate the [Example Devices File](./mikrotik/devices.csv.example) file accordingly, giving it a filename of `mikrotik/devices.csv`.
+- You need to get details of the devices that are to be reconfigured, and populate the [Example Devices File](./mikrotik/devices.csv.example) accordingly, giving it a filename of `mikrotik/devices.csv`.
 
 
 Running the script
