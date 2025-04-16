@@ -13,75 +13,6 @@ radius_egress = config['radius']['egress']
 radius_ingress = config['radius']['ingress']
 radius_secret = config['radius']['secret']
 
-# Define multiline HTML content
-login_html_template = """
-<!doctype html>
-<html lang="en">
-<head>
-<title>internet hotspot > login</title>
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-<meta http-equiv="pragma" content="no-cache">
-<meta http-equiv="expires" content="-1">
-<script>
-onload = () => document.querySelector("form").submit()
-</script>
-</head>
-<body>
-<form action="https://snapx-us1.choice.selectnetworx.com/guests/welcome/__PORTALID__" method="get">
-<input type="hidden" name="MA" value="\$(mac)">
-<input type="hidden" name="IP" value="\$(ip)">
-<input type="hidden" name="username" value="\$(username)">
-<input type="hidden" name="link-login-only" value="\$(link-login-only)">
-<input type="hidden" name="OS" value="\$(link-orig)">
-<input type="hidden" name="error" value="\$(error)">
-<input type="hidden" name="interface-name" value="\$(interface-name)">
-</form>
-</body>
-</html>
-"""
-
-alogin_html_template = """
-<!doctype html>
-<html lang="en">
-<head>
-<title>internet hotspot > login</title>
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-<meta http-equiv="pragma" content="no-cache">
-<meta http-equiv="expires" content="-1">
-<script>
-onload = () => document.querySelector("form").submit()
-</script>
-</head>
-<body>
-<form action="https://snapx-us1.choice.selectnetworx.com/guests/welcome/__PORTALID__" method="post">
-<input type="hidden" name="MA" value="\$(mac)">
-<input type="hidden" name="IP" value="\$(ip)">
-<input type="hidden" name="username" value="\$(username)">
-<input type="hidden" name="link-login-only" value="\$(link-login-only)">
-<input type="hidden" name="OS" value="\$(link-orig)">
-<input type="hidden" name="error" value="\$(error)">
-<input type="hidden" name="interface-name" value="\$(interface-name)">
-<input type="hidden" name="var" value="\$(var)">
-<input type="hidden" name="status" value="success">
-<input type="hidden" name="do" value="callback">
-</form>
-</body>
-</html>
-"""
-
-rlogin_html_template = """
-<html>
-<head>
-<title>...</title>
-<meta http-equiv="refresh" content="0; url=\$(link-redirect)">
-<meta http-equiv="pragma" content="no-cache">
-<meta http-equiv="expires" content="-1">
-</head>
-<body>
-</body>
-</html>
-"""
-
 # Create SSH client
 client = paramiko.SSHClient()
 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -171,15 +102,6 @@ def test_connection(ip, port, username, password):
         return False
 
 def configure_mikrotik(ip, port, username, password, portal_id, acl):
-    # Apply the portal_id to the login HTML template
-    # replace line endings in all templates
-    configured_login_html = login_html_template.replace("__PORTALID__", portal_id)
-    configured_login_html = configured_login_html.replace('\n', '').replace('"', '\\"')
-
-    configured_alogin_html = alogin_html_template.replace("__PORTALID__", portal_id)
-    configured_alogin_html = configured_alogin_html.replace('\n', '').replace('"', '\\"')
-
-    configured_rlogin_html = rlogin_html_template.replace('\n', '').replace('"', '\\"')
 
     # Test connection first
     if not test_connection(ip, port, username, password):
@@ -187,7 +109,6 @@ def configure_mikrotik(ip, port, username, password, portal_id, acl):
         return
     
     try:
-        
         # Connect to the device with explicit settings
         print(f"Connecting to {ip}:{port} as {username}...")
         client.connect(
@@ -208,30 +129,25 @@ def configure_mikrotik(ip, port, username, password, portal_id, acl):
             current_acl_list.append(acl) # add custom entries
         current_acl_list.append(radius_egress) # add required snap egress ip
         updated_acl_list = ",".join(current_acl_list) # it's now a csv string
-        print('Applying ACL: ' + updated_acl_list)
+        print('Updated ACL: ' + updated_acl_list)
 
         # Add custom entries into the walled garden
         exec('ip hotspot walled-garden add dst-host=*.amazonaws.com')
         exec('ip hotspot walled-garden add dst-host=*.selectnetworx.com')
 
-        exec('/file remove [find where name=sn_choice/login.html]')
-        exec('file add name=sn_choice/login.html contents="' + configured_login_html + '"')
-
-        exec('/file remove [find where name=sn_choice/alogin.html]')
-        exec('file add name=sn_choice/alogin.html contents="' + configured_alogin_html + '"')
-
-        exec('/file remove [find where name=sn_choice/rlogin.html]')
-        exec('file add name=sn_choice/rlogin.html contents="' + configured_rlogin_html + '"')
+        exec('/tool fetch url="https://content.selectnetworx.com/snapx-migration/login.php?portal=' + portal_id + '" mode=http dst-path=sn_choice/login.html')
+        exec('/tool fetch url="https://content.selectnetworx.com/snapx-migration/alogin.php?portal=' + portal_id + '" mode=http dst-path=sn_choice/alogin.html')
+        exec('/tool fetch url="https://content.selectnetworx.com/snapx-migration/rlogin.php?portal=' + portal_id + '" mode=http dst-path=sn_choice/rlogin.html')
 
         # Create a new hotspot server profile, might already exist
-        exec('ip hotspot profile add name=sn_choice html-directory=sn_choice')
+        exec('ip hotspot profile add name=sn_choice html-directory=choice')
 
         # Modify existing server to use new profile
         exec('ip hotspot set [find] profile=sn_choice')
 
         if updated_acl_list:
+            print('Applying ACL: ' + updated_acl_list)
             # Add IP address to SSH allowed list
-            # f'ip firewall address-list add list=ssh allowed address={radius_egress}') # not required
             exec(f'ip service set ssh address={updated_acl_list}')
 
         # Create a new RADIUS profile
