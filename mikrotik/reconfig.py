@@ -151,15 +151,13 @@ def configure_mikrotik(ip: str, port: int, username: str, password: str, portal_
             exec(f"ip service set ssh address={updated_acl_list}")
 
         # Create a new RADIUS profile
-        exec(
-            f"radius add service=hotspot,login address={radius_ingress} secret={radius_secret} comment=SN_CHOICE"
-        )
+        exec(f"radius add service=hotspot,login address={radius_ingress} secret={radius_secret} comment=SN_CHOICE")
 
         # Switch the server profile to the `sn_choice` profile
         exec("ip hotspot profile set [find name=sn_choice] use-radius=yes")
 
         # Switch system to use the new RADIUS profile
-        radius_to_retain = ''  # Don't disable this RADIUS profile
+        radius_to_retain = ""  # Don't disable this RADIUS profile
         exec(f'radius set [find comment!=SN_CHOICE address!="{radius_to_retain}"] disabled=yes')
 
         # Close the connection
