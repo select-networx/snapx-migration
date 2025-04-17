@@ -152,15 +152,15 @@ def configure_mikrotik(ip: str, port: int, username: str, password: str, portal_
 
         # Create a new RADIUS profile
         exec(
-            f"radius add service=hotspot,login address={radius_ingress} secret={radius_secret} disabled=yes comment=SN_CHOICE"
+            f"radius add service=hotspot,login address={radius_ingress} secret={radius_secret} comment=SN_CHOICE"
         )
 
         # Switch the server profile to the `sn_choice` profile
         exec("ip hotspot profile set [find name=sn_choice] use-radius=yes")
 
         # Switch system to use the new RADIUS profile
-        radius_to_retain = ''  # Don't disable ALL existing RADIUS profiles
-        exec(f"radius set [find comment!=SN_CHOICE address!={radius_to_retain}] disabled=yes")  # Disable other existing radius profiles
+        radius_to_retain = ''  # Don't disable this RADIUS profile
+        exec(f'radius set [find comment!=SN_CHOICE address!="{radius_to_retain}"] disabled=yes')
 
         # Close the connection
         client.close()
@@ -198,8 +198,8 @@ def exec(command: str) -> str:
 def main() -> None:
     csv_file = "./devices.csv"  # Update with your actual file path
 
-    with open(csv_file) as file:
-        for row in csv.DictReader(file, newline=""):
+    with open(csv_file, newline="") as file:
+        for row in csv.DictReader(file):
             try:
                 configure_mikrotik(
                     ip=row["ip"],
