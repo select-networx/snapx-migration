@@ -134,9 +134,9 @@ def configure_mikrotik(ip: str, port: int, username: str, password: str, portal_
         exec("ip hotspot walled-garden add dst-host=*.selectnetworx.com")
 
         url = "https://content.selectnetworx.com/snapx-migration"
-        exec(f'/tool fetch url="{url}/login.php?portal={portal_id}" mode=http dst-path=sn_choice/login.html')
-        exec(f'/tool fetch url="{url}/alogin.php?portal={portal_id}" mode=http dst-path=sn_choice/alogin.html')
-        exec(f'/tool fetch url="{url}/rlogin.php?portal={portal_id}" mode=http dst-path=sn_choice/rlogin.html')
+        exec(f'/tool fetch url="{url}/login.php?portal={portal_id}" dst-path=sn_choice/login.html')
+        exec(f'/tool fetch url="{url}/alogin.php?portal={portal_id}" dst-path=sn_choice/alogin.html')
+        exec(f'/tool fetch url="{url}/rlogin.php?portal={portal_id}" dst-path=sn_choice/rlogin.html')
 
         # Create a new hotspot server profile, might already exist
         exec("ip hotspot profile add name=sn_choice html-directory=sn_choice")
